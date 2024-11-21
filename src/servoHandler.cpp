@@ -1,6 +1,6 @@
 #include "servoHandler.h"
 
-servoData::servoData(uint8_t theta_1, uint8_t theta_2, uint8_t theta_3, bool claw)
+servoData::servoData(uint16_t theta_1,uint16_t theta_2,uint16_t theta_3, bool claw)
     : theta_1(theta_1), theta_2(theta_2), theta_3(theta_3), claw(claw) {}
 
 servoHandler::servoHandler(uint8_t baseServoPin, uint8_t shoulderServoPin,
@@ -11,6 +11,7 @@ servoHandler::servoHandler(uint8_t baseServoPin, uint8_t shoulderServoPin,
     SercoController.servoSet(clawServoPin,180, 130, 470);
 
     SercoController.begin(&Wire, 0x40, 1000);
+    
 }
 
 void servoHandler::getForwardKinematic(){
@@ -65,4 +66,36 @@ double servoHandler::interpolateAngle(double theta_s, int theta_f, double tf, in
   }
 
   return thet[servo_id];
+}
+
+void servoHandler::setForwardKinematic(double duration, uint8_t pinMap[MAX_SERVO]){
+  double angShoulder, angElbow, angBase;
+
+  getForwardKinematic(); // Get the angles from serial input
+
+  // Initialize angles on first loop iteration
+  if (counterForServo == 0) {
+    for (int i = 0; i < MAX_DOF; i++)
+    {
+      previousAngles[i] = 90;
+    }
+  }
+
+  // Interpolate angles over the specified duration
+  unsigned long startTime = millis();
+  unsigned long endTime = startTime + (duration * 1000); // Convert duration to milliseconds
+
+  while (millis() < endTime) {
+    for (int i = 0; i < MAX_DOF; i++)
+    {
+      SercoController.servoWrite(pinMap[i],interpolateAngle(previousAngles[i],angleForwardKinematic[i],duration,i));
+    }
+    delay(10); 
+  }
+  for (int i = 0; i < MAX_DOF; i++)
+  {
+    previousAngles[i] = angleForwardKinematic[i];
+  }
+
+  counterForServo++;
 }
