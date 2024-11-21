@@ -1,34 +1,39 @@
 #include <Arduino.h>
-#include <Servo.h>
-
+// #include <Adafruit_PWMServoDriver.h>
+#include <iarduino_MultiServo.h>
+#include <SPI.h>
 #define MAX_DOF 3
 #define MAX_BUFFER 12
 
-int servoPin_1 = 9;
-int servoPin_2 = 10;
-int servoPin_3 = 11;
+iarduino_MultiServo SercoController;
 
-Servo shoulderServo;
-Servo elbowServo;
-Servo baseServo;
+uint8_t baseServo = 0;
+uint8_t shoulderServo = 1;
+uint8_t elbowServo = 2;
+uint8_t clawServo = 3 ;
 
-int angleForwardKinematic[MAX_DOF] = {90, 90, 90}; // Servo angles: Shoulder, Elbow, Base
+
+int angleForwardKinematic[MAX_DOF + 1] = {90, 90, 90, 90}; // Servo angles: Shoulder, Elbow, Base + claw
 int counterForServo = 0;
 
 static double angPrevShoulder = 0, angPrevElbow = 0, angPrevBase = 0;
 
 void getForwardKinematic();
+double forwardKinematicBase(double theta_s, int theta_f, double tf);
 double forwardKinematicShoulder(double theta_s, int theta_f, double tf);
 double forwardKinematicElbow(double theta_s, int theta_f, double tf);
-double forwardKinematicBase(double theta_s, int theta_f, double tf);
 
 void setup() {
   Serial.begin(9600);
   Serial.setTimeout(1000); // Set timeout to 100 milliseconds
-  
-  baseServo.attach(servoPin_1, 440, 2400);
-  shoulderServo.attach(servoPin_2, 440, 2400); // Attach servo with min and max pulse
-  elbowServo.attach(servoPin_3, 440, 2400);
+  while (!Serial)
+  {}
+  SercoController.servoSet(baseServo, 180, 130, 470); // Servo at pin 0
+  SercoController.servoSet(shoulderServo, 180, 130, 470); // Servo at pin 1
+  SercoController.servoSet(elbowServo, 180, 130, 470); // Servo at pin 2
+  SercoController.servoSet(clawServo,180, 130, 470);
+  //SercoController.servoSet(SERVO_ALL, SERVO_MG90);
+  SercoController.begin();
 }
 
 void loop() {
@@ -36,11 +41,6 @@ void loop() {
   double duration = 1;  // Duration in seconds
 
   getForwardKinematic(); // Get the angles from serial input
-
-  for (int i = 0; i < MAX_DOF; i++) {
-    Serial.print(i);
-    Serial.println(angleForwardKinematic[i]);
-  }
 
   // Initialize angles on first loop iteration
   if (counterForServo == 0) {
@@ -57,60 +57,45 @@ void loop() {
     angBase = forwardKinematicBase(angPrevBase, angleForwardKinematic[0], duration);  // Direct assignment for base angle
     angShoulder = forwardKinematicShoulder(angPrevShoulder, angleForwardKinematic[1], duration);
     angElbow = forwardKinematicElbow(angPrevElbow, angleForwardKinematic[2], duration);
-if (angBase >= 180 || angShoulder >= 180 || angElbow >= 180)
-{
-    return;
-}
-else {
-    baseServo.write(angBase);    // Move base servo
-    shoulderServo.write(angShoulder);  // Move shoulder servo
-    elbowServo.write(angElbow);  // Move elbow servo
-}
 
-  
-    delay(10); // Short delay to smooth movement
+     SercoController.servoWrite(baseServo,angBase);
+     SercoController.servoWrite(shoulderServo,angShoulder);
+     SercoController.servoWrite(elbowServo,angElbow);
+
+    delay(10); 
   }
-
-  Serial.println("Successfully moved!");
 
   // Store previous angles for next loop iteration
   angPrevBase = angleForwardKinematic[0];
-  angPrevElbow = angleForwardKinematic[1];
-  angShoulder = angleForwardKinematic[2];
+  angPrevShoulder = angleForwardKinematic[1];
+  angPrevElbow = angleForwardKinematic[2];
 
   counterForServo++;
 }
 
 // Function to read angles from serial input
 void getForwardKinematic() {
-  while (Serial.available() > 0) {
-    char modificator = Serial.read();
-    switch (modificator) {
-      case 'b':
-        Serial.println(angleForwardKinematic[2]);
-        angleForwardKinematic[0] = Serial.parseInt(); // Set base angle
-        break;
-      case 's':
-        Serial.println(angleForwardKinematic[0]);
-        angleForwardKinematic[1] = Serial.parseInt(); // Set shoulder angle
-        break;
-      case 'e':
-        Serial.println(angleForwardKinematic[1]);
-        angleForwardKinematic[2] = Serial.parseInt(); // Set elbow angle
-        break;
-      case 'r':
-        for (int i = 0; i < MAX_DOF; i++)  // Reset all angles to 90
-          angleForwardKinematic[i] = 90;
-        break;
-      default:
-        break;
+  if (Serial.available())
+  {
+    String dataFromSerialPort = Serial.readStringUntil('\n'); 
+    int valueIndex = 0; // Index for angleForwardKinematic array
+    int startIdx = 0; // Start index for substring
+    int commaIdx;
+
+    // Loop to parse the string
+    while ((commaIdx = dataFromSerialPort.indexOf(',', startIdx)) != -1 && valueIndex < MAX_DOF) {
+      // Extract the substring and convert to integer
+      angleForwardKinematic[valueIndex] = dataFromSerialPort.substring(startIdx, commaIdx).toInt();
+      startIdx = commaIdx + 1; // Move to the next character after the comma
+      valueIndex++;
     }
 
-    // Clear any remaining characters in the buffer
-    while (Serial.available() > 0) {
-      int trash = Serial.read();
+    // Handle the last value (after the final comma)
+    if (valueIndex < MAX_DOF) {
+      angleForwardKinematic[valueIndex] = dataFromSerialPort.substring(startIdx).toInt();
     }
   }
+  
 }
 
 // Function to compute shoulder angle interpolation over time (cubic polynomial)
