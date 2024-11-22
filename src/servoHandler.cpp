@@ -107,16 +107,22 @@ void servoHandler::setForwardKinematic(double duration, uint8_t pinMap[MAX_SERVO
 }
 
 std::vector<int> servoHandler::parseString(const String &dataFromSerialPort){
+      
+  int valueIndex = 0; // Index for angleForwardKinematic array
+  int startIdx = 0; // Start index for substring
   int commaIdx;
-      while ((commaIdx = dataFromSerialPort.indexOf(',', startIdx)) != -1 && valueIndex < MAX_DOF) {
+  std::vector<int> dataFromString;
+      while ((commaIdx = dataFromSerialPort.indexOf(',', startIdx)) != -1) {
       // Extract the substring and convert to integer
-      angleForwardKinematic[valueIndex] = dataFromSerialPort.substring(startIdx, commaIdx).toInt();
+      dataFromString[valueIndex] = dataFromSerialPort.substring(startIdx, commaIdx).toInt();
       startIdx = commaIdx + 1; // Move to the next character after the comma
       valueIndex++;
     }
 
     // Handle the last value (after the final comma)
     if (valueIndex < MAX_DOF) {
-      angleForwardKinematic[valueIndex] = dataFromSerialPort.substring(startIdx).toInt();
+      dataFromString[valueIndex] = dataFromSerialPort.substring(startIdx).toInt();
     }
+
+    return dataFromString;
 }
