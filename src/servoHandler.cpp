@@ -5,10 +5,10 @@ servoData::servoData(uint16_t theta_1,uint16_t theta_2,uint16_t theta_3, bool cl
 
 servoHandler::servoHandler(uint8_t baseServoPin, uint8_t shoulderServoPin,
  uint8_t elbowServoPin, uint8_t clawServoPin){
-    SercoController.servoSet(baseServoPin, 180, 130, 470); // Servo at pin 0
-    SercoController.servoSet(shoulderServoPin, 180, 130, 470); // Servo at pin 1
-    SercoController.servoSet(elbowServoPin, 180, 130, 470); // Servo at pin 2
-    SercoController.servoSet(clawServoPin,180, 130, 470);
+    SercoController.servoSet(baseServoPin, MAX_ANGLE, SERVO_MIN, SERVO_MAX); // Servo at pin 0
+    SercoController.servoSet(shoulderServoPin, MAX_ANGLE, SERVO_MIN, SERVO_MAX); // Servo at pin 1
+    SercoController.servoSet(elbowServoPin, MAX_ANGLE, SERVO_MIN, SERVO_MAX); // Servo at pin 2
+    SercoController.servoSet(clawServoPin,MAX_ANGLE, SERVO_MIN, SERVO_MAX);
 
     SercoController.begin(&Wire, 0x40, 1000);
     
@@ -18,6 +18,12 @@ void servoHandler::getForwardKinematic(){
   if (Serial.available())
   {
     String dataFromSerialPort = Serial.readStringUntil('\n'); 
+    if (dataFromSerialPort[0] == 'A')
+    {
+      timePerSleep = dataFromSerialPort.substring(1).toInt();
+      return;
+    }
+    
     int valueIndex = 0; // Index for angleForwardKinematic array
     int startIdx = 0; // Start index for substring
     int commaIdx;
@@ -98,4 +104,19 @@ void servoHandler::setForwardKinematic(double duration, uint8_t pinMap[MAX_SERVO
   }
 
   counterForServo++;
+}
+
+std::vector<int> servoHandler::parseString(const String &dataFromSerialPort){
+  int commaIdx;
+      while ((commaIdx = dataFromSerialPort.indexOf(',', startIdx)) != -1 && valueIndex < MAX_DOF) {
+      // Extract the substring and convert to integer
+      angleForwardKinematic[valueIndex] = dataFromSerialPort.substring(startIdx, commaIdx).toInt();
+      startIdx = commaIdx + 1; // Move to the next character after the comma
+      valueIndex++;
+    }
+
+    // Handle the last value (after the final comma)
+    if (valueIndex < MAX_DOF) {
+      angleForwardKinematic[valueIndex] = dataFromSerialPort.substring(startIdx).toInt();
+    }
 }
