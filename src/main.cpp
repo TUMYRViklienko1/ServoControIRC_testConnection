@@ -1,5 +1,5 @@
 #include <Arduino.h>
-// #include <Adafruit_PWMServoDriver.h>
+#include <Adafruit_PWMServoDriver.h>
 #include <iarduino_MultiServo.h>
 #include <SPI.h>
 #define MAX_DOF 3

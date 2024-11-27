@@ -1,7 +1,12 @@
 #include "servoHandler.h"
 
-servoData::servoData(uint16_t theta_1,uint16_t theta_2,uint16_t theta_3, bool claw)
-    : theta_1(theta_1), theta_2(theta_2), theta_3(theta_3), claw(claw) {}
+servoData::servoData(const std::vector<uint16_t> &dataFromSerialPort)
+    : theta_1(dataFromSerialPort.at(0)), theta_2(dataFromSerialPort.at(1)), theta_3(dataFromSerialPort.at(2)), claw(dataFromSerialPort.at(3)) {}
+
+ std::vector<uint16_t> servoData::servoDataGet() const{
+  std::vector<uint16_t> temp =  {theta_1,theta_2,theta_3,claw};
+  return temp;
+}
 
 servoHandler::servoHandler(uint8_t baseServoPin, uint8_t shoulderServoPin,
  uint8_t elbowServoPin, uint8_t clawServoPin){
@@ -11,41 +16,41 @@ servoHandler::servoHandler(uint8_t baseServoPin, uint8_t shoulderServoPin,
     SercoController.servoSet(clawServoPin,MAX_ANGLE, SERVO_MIN, SERVO_MAX);
 
     SercoController.begin(&Wire, 0x40, 1000);
-    
 }
 
-void servoHandler::getForwardKinematic(){
+std::vector<uint16_t> servoHandler::getFromSerialPort(){
   if (Serial.available())
   {
-    String dataFromSerialPort = Serial.readStringUntil('\n'); 
-    if (dataFromSerialPort[0] == 'A')
+    const String dataFromSerialPort = Serial.readStringUntil('\n');
+    std::vector<uint16_t> dataFromString = parseString(dataFromSerialPort);
+    autoModeFlagCheck(dataFromString);
+    return dataFromString;
+  }
+  return std::vector<uint16_t>();
+}
+
+bool servoHandler::autoModeFlagCheck(const std::vector<uint16_t> &dataFromString){
+  switch (*dataFromString.begin())
+  {
+  case STARTAUTOMODE:
     {
-      timePerSleep = dataFromSerialPort.substring(1).toInt();
-      return;
+    timePerSleep = dataFromString.at(1);
+    numberOfElemetns = dataFromString.at(2);
+    return true;
     }
-    
-    int valueIndex = 0; // Index for angleForwardKinematic array
-    int startIdx = 0; // Start index for substring
-    int commaIdx;
-
-    // Loop to parse the string
-    while ((commaIdx = dataFromSerialPort.indexOf(',', startIdx)) != -1 && valueIndex < MAX_DOF) {
-      // Extract the substring and convert to integer
-      angleForwardKinematic[valueIndex] = dataFromSerialPort.substring(startIdx, commaIdx).toInt();
-      startIdx = commaIdx + 1; // Move to the next character after the comma
-      valueIndex++;
+  case STOPAUTOMODE:
+    {
+    timePerSleep = 0;
+    numberOfElemetns = 0;
+    return true;
     }
-
-    // Handle the last value (after the final comma)
-    if (valueIndex < MAX_DOF) {
-      angleForwardKinematic[valueIndex] = dataFromSerialPort.substring(startIdx).toInt();
-    }
+  default:
+    return false;
   }
 }
 
-double servoHandler::interpolateAngle(double theta_s, int theta_f, double tf, int servo_id){
-  double a0, a1, a2, a3;
-  double t;
+double servoHandler::interpolateAngle(const double theta_s,const int theta_f,const double tf,const int servo_id){
+
   static double endt[3];  // Static array to store end angles for each servo
   static unsigned long ts[3];  // Static array to store timestamps for each servo
   static double thet[3];  // Static array to store final angles for each servo
@@ -57,12 +62,11 @@ double servoHandler::interpolateAngle(double theta_s, int theta_f, double tf, in
   }
 
   // Cubic polynomial coefficients
-  a0 = theta_s;
-  a1 = 0;
-  a2 = (3.0 / pow(tf, 2)) * (theta_f - theta_s);
-  a3 = -(2.0 / pow(tf, 3)) * (theta_f - theta_s);
-
-  t = (double)(millis() - ts[servo_id]) / 1000;  // Time elapsed in seconds
+  const double a0 = theta_s;
+  const double a1 = 0;
+  const double a2 = (3.0 / pow(tf, 2)) * (theta_f - theta_s);
+  const double a3 = -(2.0 / pow(tf, 3)) * (theta_f - theta_s);
+  const double t = (double)(millis() - ts[servo_id]) / 1000;  // Time elapsed in seconds
 
   // Calculate the interpolated angle
   if (t <= tf) {
@@ -74,19 +78,16 @@ double servoHandler::interpolateAngle(double theta_s, int theta_f, double tf, in
   return thet[servo_id];
 }
 
-void servoHandler::setForwardKinematic(double duration, uint8_t pinMap[MAX_SERVO]){
-  double angShoulder, angElbow, angBase;
-
-  getForwardKinematic(); // Get the angles from serial input
-
+void servoHandler::setForwardKinematic(double duration, const servoData &servoAngles){
   // Initialize angles on first loop iteration
   if (counterForServo == 0) {
-    for (int i = 0; i < MAX_DOF; i++)
+    for (unsigned int & previousAngle : previousAngles)
     {
-      previousAngles[i] = 90;
+      previousAngle = 90;
     }
   }
 
+  std::vector<uint16_t> temp = servoAngles.servoDataGet();
   // Interpolate angles over the specified duration
   unsigned long startTime = millis();
   unsigned long endTime = startTime + (duration * 1000); // Convert duration to milliseconds
@@ -94,24 +95,24 @@ void servoHandler::setForwardKinematic(double duration, uint8_t pinMap[MAX_SERVO
   while (millis() < endTime) {
     for (int i = 0; i < MAX_DOF; i++)
     {
-      SercoController.servoWrite(pinMap[i],interpolateAngle(previousAngles[i],angleForwardKinematic[i],duration,i));
+      SercoController.servoWrite(i,interpolateAngle(previousAngles[i],temp.at(i),duration,i));
     }
     delay(10); 
   }
   for (int i = 0; i < MAX_DOF; i++)
   {
-    previousAngles[i] = angleForwardKinematic[i];
+    previousAngles[i] = temp.at(i);
   }
 
   counterForServo++;
 }
 
-std::vector<int> servoHandler::parseString(const String &dataFromSerialPort){
+std::vector<uint16_t> servoHandler::parseString(const String &dataFromSerialPort) const{
       
   int valueIndex = 0; // Index for angleForwardKinematic array
   int startIdx = 0; // Start index for substring
   int commaIdx;
-  std::vector<int> dataFromString;
+  std::vector<uint16_t> dataFromString;
       while ((commaIdx = dataFromSerialPort.indexOf(',', startIdx)) != -1) {
       // Extract the substring and convert to integer
       dataFromString[valueIndex] = dataFromSerialPort.substring(startIdx, commaIdx).toInt();
@@ -125,4 +126,27 @@ std::vector<int> servoHandler::parseString(const String &dataFromSerialPort){
     }
 
     return dataFromString;
+}
+
+void servoHandler::serialPortHandler() {
+  const std::vector<uint16_t> serialPortData = getFromSerialPort();
+
+  if (serialPortData.empty())
+    return;
+
+
+
+  const servoData temp(serialPortData);
+  if (numberOfElemetns != 0 && counter != 0)
+  {
+    autoModeAngles.push_back(temp);
+    numberOfElemetns--;
+  }
+  else
+    autoModeAngles.at(0) = temp;
+
+  for (size_t i = 0; i < autoModeAngles.size(); ++i) {
+    setForwardKinematic(timePerSleep, autoModeAngles.at(i));
+  }
+  counter++;
 }

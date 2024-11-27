@@ -7,37 +7,47 @@
 #include <vector>
 #define MAX_DOF 3
 #define MAX_SERVO 4
-const int SERVO_MIN = 130;
-const int SERVO_MAX = 470;
-const int INITIAL_ANGLE = 90;
-const int MAX_ANGLE = 180;
+//[flag,timer,size] - start
+//[flag] - stop
+//[theta_1,theta_2,theta_3,theta_4] 
+constexpr uint16_t SERVO_MIN = 130;
+constexpr uint16_t SERVO_MAX = 470;
+constexpr uint16_t INITIAL_ANGLE = 90;
+constexpr uint16_t MAX_ANGLE = 180;
+constexpr uint8_t STARTAUTOMODE = -1;
+constexpr uint8_t STOPAUTOMODE = -2;
 struct servoData
 {
     uint16_t theta_1;
     uint16_t theta_2;
     uint16_t theta_3;
-    bool claw = 1;
+    bool claw = true;
     
-    servoData(uint16_t theta_1,uint16_t theta_2,uint16_t theta_3, bool claw);
+    explicit servoData(const std::vector<uint16_t> &dataFromSerialPort);
+    servoData();
+    std::vector<uint16_t> servoDataGet() const;
 };
 
 class servoHandler {
 public:
     servoHandler(uint8_t baseServoPin, uint8_t shoulderServoPin,
     uint8_t elbowServoPin, uint8_t clawServoPin);
-    void getForwardKinematic();
-    double interpolateAngle(double theta_s, int theta_f, double tf, int servo_id);
-    void setForwardKinematic(double duration, uint8_t pinMap[MAX_SERVO]);
+    void serialPortHandler();
 private:
-    std::vector<int> parseString(const String &dataFromSerialPort);
+    void setForwardKinematic(double duration, const servoData &servoAngles);
+    static double interpolateAngle(double theta_s, int theta_f, double tf, int servo_id);
+    std::vector<uint16_t> parseString(const String &dataFromSerialPort) const;
+    bool autoModeFlagCheck(const std::vector<uint16_t> &dataFromString);
+    std::vector<uint16_t> getFromSerialPort();
 
-    servoData servoData;
+    servoData mServoData;
     iarduino_MultiServo SercoController;
-    uint16_t angleForwardKinematic[MAX_SERVO] = {90, 90, 90, 90}; // Servo angles: Shoulder, Elbow, Base + claw
     static uint16_t previousAngles[MAX_DOF];
     int counterForServo = 0; 
     std::vector<servoData> autoModeAngles;  
-    static int timePerSleep;
+    int timePerSleep{};
+    static int numberOfElemetns;
+    static int counter;
 };
 
 
