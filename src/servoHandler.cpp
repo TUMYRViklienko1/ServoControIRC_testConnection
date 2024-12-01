@@ -134,19 +134,28 @@ void servoHandler::serialPortHandler() {
   if (serialPortData.empty())
     return;
 
-
+  if (numberOfElemetns > 0) {
+    if (counter == 0) {
+      // Increment the counter to skip the first iteration
+      counter++;
+    } else {
+      // Process data after the first iteration
+      const servoData temp(serialPortData);
+      autoModeAngles.push_back(temp);
+      numberOfElemetns--;
+      return;
+    }
+  }
+  else {
+    for (auto autoModeAngle : autoModeAngles) {
+      setForwardKinematic(timePerSleep, autoModeAngle);
+      delay(timePerSleep);
+    }
+  }
 
   const servoData temp(serialPortData);
-  if (numberOfElemetns != 0 && counter != 0)
-  {
-    autoModeAngles.push_back(temp);
-    numberOfElemetns--;
-  }
-  else
-    autoModeAngles.at(0) = temp;
+  autoModeAngles.at(0) = temp;
 
-  for (size_t i = 0; i < autoModeAngles.size(); ++i) {
-    setForwardKinematic(timePerSleep, autoModeAngles.at(i));
-  }
+
   counter++;
 }
