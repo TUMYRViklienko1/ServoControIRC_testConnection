@@ -2,6 +2,9 @@
 #include <Adafruit_PWMServoDriver.h>
 #include <iarduino_MultiServo.h>
 #include <SPI.h>
+#include "servoHandler.h"
+#include "../lib/servoHandler/src/servoHandler.h"
+
 #define MAX_DOF 3
 #define MAX_BUFFER 12
 
