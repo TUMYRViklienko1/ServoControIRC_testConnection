@@ -19,7 +19,9 @@ uint8_t clawServo = 3 ;
 int angleForwardKinematic[MAX_DOF + 1] = {90, 90, 90, 90}; // Servo angles: Shoulder, Elbow, Base + claw
 int counterForServo = 0;
 
-static double angPrevShoulder = 0, angPrevElbow = 0, angPrevBase = 0;
+double angPrevShoulder = 0, angPrevElbow = 0, angPrevBase = 0;
+
+double previousAngles[MAX_DOF] = {0,0,0};
 
 void getForwardKinematic();
 double forwardKinematicBase(double theta_s, int theta_f, double tf);
@@ -47,9 +49,9 @@ void loop() {
 
   // Initialize angles on first loop iteration
   if (counterForServo == 0) {
-    angPrevBase = 90;
-    angPrevShoulder = 90;
-    angPrevElbow = 90;
+    for (double & previousAngle : previousAngles) {
+      previousAngle = 90;
+    }
   }
 
   // Interpolate angles over the specified duration
@@ -57,21 +59,19 @@ void loop() {
   unsigned long endTime = startTime + (duration * 1000); // Convert duration to milliseconds
 
   while (millis() < endTime) {
-    angBase = forwardKinematicBase(angPrevBase, angleForwardKinematic[0], duration);  // Direct assignment for base angle
-    angShoulder = forwardKinematicShoulder(angPrevShoulder, angleForwardKinematic[1], duration);
-    angElbow = forwardKinematicElbow(angPrevElbow, angleForwardKinematic[2], duration);
 
-     SercoController.servoWrite(baseServo,angBase);
-     SercoController.servoWrite(shoulderServo,angShoulder);
-     SercoController.servoWrite(elbowServo,angElbow);
+     SercoController.servoWrite(baseServo,forwardKinematicBase(previousAngles[0], angleForwardKinematic[0], duration));
+     SercoController.servoWrite(shoulderServo,forwardKinematicShoulder(previousAngles[1], angleForwardKinematic[1], duration));
+     SercoController.servoWrite(elbowServo,forwardKinematicElbow(previousAngles[2], angleForwardKinematic[2], duration));
+
 
     delay(10); 
   }
 
   // Store previous angles for next loop iteration
-  angPrevBase = angleForwardKinematic[0];
-  angPrevShoulder = angleForwardKinematic[1];
-  angPrevElbow = angleForwardKinematic[2];
+  for (int i = 0; i < MAX_DOF; ++i) {
+    previousAngles[i] = angleForwardKinematic[i];
+  }
 
   counterForServo++;
 }
@@ -186,6 +186,8 @@ double forwardKinematicBase(double theta_s, int theta_f, double tf) {
 
   return thet;
 }
+
+
 
 
 
