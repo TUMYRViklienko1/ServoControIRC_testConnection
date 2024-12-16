@@ -23,7 +23,7 @@ double angPrevShoulder = 0, angPrevElbow = 0, angPrevBase = 0;
 
 double previousAngles[MAX_DOF] = {0,0,0};
 
-void getForwardKinematic();
+void getFromSerialPort();
 double forwardKinematicBase(double theta_s, int theta_f, double tf);
 double forwardKinematicShoulder(double theta_s, int theta_f, double tf);
 double forwardKinematicElbow(double theta_s, int theta_f, double tf);
@@ -45,7 +45,7 @@ void loop() {
   double angShoulder, angElbow, angBase;
   double duration = 1;  // Duration in seconds
 
-  getForwardKinematic(); // Get the angles from serial input
+  getFromSerialPort(); // Get the angles from serial input
 
   // Initialize angles on first loop iteration
   if (counterForServo == 0) {
@@ -65,7 +65,7 @@ void loop() {
      SercoController.servoWrite(elbowServo,forwardKinematicElbow(previousAngles[2], angleForwardKinematic[2], duration));
 
 
-    delay(10); 
+    delay(10);
   }
 
   // Store previous angles for next loop iteration
@@ -77,7 +77,7 @@ void loop() {
 }
 
 // Function to read angles from serial input
-void getForwardKinematic() {
+void getFromSerialPort() {
   if (Serial.available())
   {
     String dataFromSerialPort = Serial.readStringUntil('\n'); 
@@ -86,7 +86,7 @@ void getForwardKinematic() {
     int commaIdx;
 
     // Loop to parse the string
-    while ((commaIdx = dataFromSerialPort.indexOf(',', startIdx)) != -1 && valueIndex < MAX_DOF) {
+    while ((commaIdx = dataFromSerialPort.indexOf(',', startIdx)) != -1) {
       // Extract the substring and convert to integer
       angleForwardKinematic[valueIndex] = dataFromSerialPort.substring(startIdx, commaIdx).toInt();
       startIdx = commaIdx + 1; // Move to the next character after the comma
@@ -94,9 +94,8 @@ void getForwardKinematic() {
     }
 
     // Handle the last value (after the final comma)
-    if (valueIndex < MAX_DOF) {
-      angleForwardKinematic[valueIndex] = dataFromSerialPort.substring(startIdx).toInt();
-    }
+    angleForwardKinematic[valueIndex] = dataFromSerialPort.substring(startIdx).toInt();
+
   }
   
 }
