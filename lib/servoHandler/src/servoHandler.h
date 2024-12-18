@@ -1,11 +1,9 @@
 #ifndef SERVOHANDLER_H
 #define SERVOHANDLER_H
 #include <Arduino.h>
-#include <Wire.h>
-
-    // return dataFromString;
+#include <Adafruit_PWMServoDriver.h>
 #include <iarduino_MultiServo.h>
-#include <StandardCplusplus.h>
+#include <SPI.h>
 #include <vector>
 #define MAX_DOF 3
 #define MAX_SERVO 4
@@ -25,8 +23,7 @@ struct servoData
     uint16_t theta_3;
     bool claw = true;
     
-    explicit servoData(const std::vector<uint16_t> &dataFromSerialPort);
-    servoData();
+    explicit servoData(int dataFromSerialPort[MAX_DOF]);
     std::vector<uint16_t> servoDataGet() const;
 };
 
@@ -34,22 +31,29 @@ class servoHandler {
 public:
     servoHandler(uint8_t baseServoPin, uint8_t shoulderServoPin,
     uint8_t elbowServoPin, uint8_t clawServoPin);
-    void serialPortHandler();
-private:
-    void setForwardKinematic(double duration, const servoData &servoAngles);
-    static double interpolateAngle(double theta_s, int theta_f, double tf, int servo_id);
-    std::vector<uint16_t> parseString(const String &dataFromSerialPort) const;
-    bool autoModeFlagCheck(const std::vector<uint16_t> &dataFromString);
-    std::vector<uint16_t> getFromSerialPort();
 
-    servoData mServoData;
+    void setForwardKinematic(double duration);
+    void servoControllerBegin();
+private:
+    void getFromSerialPort();
+    static double forwardKinematicBase(double theta_s, int theta_f, double tf);
+    static double forwardKinematicShoulder(double theta_s, int theta_f, double tf);
+    static double forwardKinematicElbow(double theta_s, int theta_f, double tf);
+    void autoModeHandler();
+    void sendToServo(int theta_1, int theta_2, int theta_3);
+    //servoData mServoData;
     iarduino_MultiServo SercoController;
-    static uint16_t previousAngles[MAX_DOF];
+    double previousAngles[MAX_DOF] = {0,0,0};
+    int angleForwardKinematic[MAX_DOF + 1] = {90,90,90,90};
     int counterForServo = 0; 
     std::vector<servoData> autoModeAngles;  
-    int timePerSleep{};
-    static int numberOfElemetns;
-    static int counter;
+    int numberOfElements{};
+    int durationPerStep{};
+
+    uint8_t baseServo;
+    uint8_t shoulderServo;
+    uint8_t elbowServo;
+    uint8_t clawServo;
 };
 
 
