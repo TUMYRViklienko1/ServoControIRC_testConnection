@@ -175,6 +175,7 @@ void servoHandler::sendToServo(int theta_1, int theta_2, int theta_3) {
     SercoController.servoWrite(shoulderServo,forwardKinematicShoulder(previousAngles[1], theta_2, DURATION));
     SercoController.servoWrite(elbowServo,forwardKinematicElbow(previousAngles[2], theta_3, DURATION));
 
+
     delay(10);
   }
 
