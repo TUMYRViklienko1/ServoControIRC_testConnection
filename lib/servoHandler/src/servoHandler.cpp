@@ -1,6 +1,18 @@
 #include "servoHandler.h"
 #define DURATION 1
 
+#define xGAIN GAIN_ONE
+#define x1BIT 0.125
+
+
+int16_t ADCres; 
+float Voltage = 0.0; 
+bool flagClaw = true;
+
+float curr = 0.0; 
+#define zeroamp 2.482
+#define oneamp 2.612
+
 servoData::servoData(int dataFromSerialPort[4])
     : theta_1(dataFromSerialPort[0]), theta_2(dataFromSerialPort[1]), theta_3(dataFromSerialPort[2]), claw(dataFromSerialPort[3]) {}
 
@@ -19,11 +31,14 @@ void servoHandler::servoControllerBegin() {
   SercoController.servoSet(elbowServo, MAX_ANGLE, SERVO_MIN, SERVO_MAX); // Servo at pin 2
   SercoController.servoSet(clawServo,MAX_ANGLE, SERVO_MIN, SERVO_MAX);
 
+  currentController.begin();
+  currentController.setGain(xGAIN);
   SercoController.begin();
+
+  SercoController.servoWrite(clawServo,0);
 }
 
-void servoHandler::setForwardKinematic(const double duration){
-  // Initialize angles on first loop iteration
+void servoHandler::setForwardKinematic(const double duration) {
   getFromSerialPort(); // Get the angles from serial input
 
   if (angleForwardKinematic[0] == -1) {
@@ -32,17 +47,18 @@ void servoHandler::setForwardKinematic(const double duration){
     return;
   }
 
-  if (numberOfElements != 0) {
+  if (numberOfElements > 0) {
     const servoData temp(angleForwardKinematic);
     autoModeAngles.push_back(temp);
     numberOfElements--;
+
     if (numberOfElements == 0) {
       autoModeHandler();
     }
     return;
   }
-  // Initialize angles on first loop iteration
-  sendToServo(angleForwardKinematic[0],angleForwardKinematic[1],angleForwardKinematic[2]);
+
+  sendToServo(angleForwardKinematic[0], angleForwardKinematic[1], angleForwardKinematic[2], angleForwardKinematic[3]);
 }
 
 
@@ -67,6 +83,83 @@ void servoHandler::getFromSerialPort() {
 
   }
 }
+
+
+
+
+void servoHandler::autoModeHandler() {
+  if (autoModeAngles.empty()) return; // Guard against empty vector
+
+  while (true) {
+    for (int i = 0; i < autoModeAngles.size(); ++i) {
+      sendToServo(autoModeAngles.at(i).theta_1,autoModeAngles.at(i).theta_2,autoModeAngles.at(i).theta_3,autoModeAngles.at(i).claw);
+      delay(durationPerStep * 1000); // Blocking delay, adjust if asynchronous behavior is needed
+    }
+  }
+}
+
+
+void servoHandler::sendToServo(int theta_1, int theta_2, int theta_3, bool claw) {
+  if (counterForServo == 0) {
+    for (double & previousAngle : previousAngles) {
+      previousAngle = 90;
+    }
+  }
+
+  // Interpolate angles over the specified duration
+  unsigned long startTime = millis();
+  unsigned long endTime = startTime + (DURATION * 1000); // Convert duration to milliseconds
+
+  while (millis() < endTime) {
+    SercoController.servoWrite(baseServo,forwardKinematicBase(previousAngles[0], theta_1, DURATION));
+    SercoController.servoWrite(shoulderServo,forwardKinematicShoulder(previousAngles[1], theta_2, DURATION));
+    SercoController.servoWrite(elbowServo,forwardKinematicElbow(previousAngles[2], theta_3, DURATION));
+    clawFlagCheck(claw);
+    
+
+    delay(10);
+  }
+
+  // Store previous angles for next loop iteration
+  for (int i = 0; i < MAX_DOF; ++i) {
+    previousAngles[i] = angleForwardKinematic[i];
+  }
+
+  counterForServo++;
+}
+
+void servoHandler::driveServo(int startAngle, int endAngle, int delayTime, int step) {
+  for (int angle = startAngle; angle <= endAngle; angle += step) {
+    SercoController.servoWrite(3,angle);
+    Serial.print(angle);
+    if (angle == 174) {
+      flagClaw = false;
+    }
+    delay(delayTime);          // Wait for the servo to move to the position
+  }
+}
+
+void servoHandler::clawFlagCheck(bool clawFlag) {
+
+  if (clawFlag == OPEN_CLAW) {
+    SercoController.servoWrite(3,0);
+    flagClaw = true;
+  } else if (clawFlag == CLOSE_CLAW) {
+    if (flagClaw == true) {
+      driveServo();
+    }
+
+    ADCres = currentController.readADC_SingleEnded(0);
+    Voltage = (ADCres * x1BIT)/1000;
+    curr = (Voltage - zeroamp) / (oneamp - zeroamp);
+
+    if (curr > 0.6) {
+      flagClaw = false;
+    }
+
+  }
+}
+
 
 double servoHandler::forwardKinematicBase(double theta_s, int theta_f, double tf) {
   double a0, a1, a2, a3;
@@ -150,41 +243,6 @@ double servoHandler::forwardKinematicElbow(double theta_s, int theta_f, double t
   }
 
   return thet;
-}
-
-void servoHandler::autoModeHandler() {
-  while (true)
-  for (auto & autoModeAngle : autoModeAngles) {
-    sendToServo(autoModeAngle.theta_1,autoModeAngle.theta_2,autoModeAngle.theta_3);
-  }
-}
-
-void servoHandler::sendToServo(int theta_1, int theta_2, int theta_3) {
-  if (counterForServo == 0) {
-    for (double & previousAngle : previousAngles) {
-      previousAngle = 90;
-    }
-  }
-
-  // Interpolate angles over the specified duration
-  unsigned long startTime = millis();
-  unsigned long endTime = startTime + (DURATION * 1000); // Convert duration to milliseconds
-
-  while (millis() < endTime) {
-    SercoController.servoWrite(baseServo,forwardKinematicBase(previousAngles[0], theta_1, DURATION));
-    SercoController.servoWrite(shoulderServo,forwardKinematicShoulder(previousAngles[1], theta_2, DURATION));
-    SercoController.servoWrite(elbowServo,forwardKinematicElbow(previousAngles[2], theta_3, DURATION));
-
-
-    delay(10);
-  }
-
-  // Store previous angles for next loop iteration
-  for (int i = 0; i < MAX_DOF; ++i) {
-    previousAngles[i] = angleForwardKinematic[i];
-  }
-
-  counterForServo++;
 }
 
 
